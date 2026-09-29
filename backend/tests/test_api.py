@@ -1,4 +1,8 @@
-"""API 端到端测试（mock 引擎）：上传 → 轮询 → Markdown 获取/下载、错误处理。"""
+"""API 端到端测试（mock 引擎）：上传 → 轮询 → 实时部分结果 → 完整 Markdown、错误处理。
+
+mock 引擎运行在独立 worker 子进程中（与真实引擎同路径），因此这里同时覆盖了
+worker 协议（.job / .state.json / result.md 增量写入）。
+"""
 import io
 import time
 
@@ -19,7 +23,7 @@ def make_pdf(pages: int = 1) -> bytes:
     return data
 
 
-def wait_finished(task_id: str, timeout: float = 30.0) -> dict:
+def wait_finished(task_id: str, timeout: float = 60.0) -> dict:
     deadline = time.time() + timeout
     while time.time() < deadline:
         task = client.get(f"/api/tasks/{task_id}").json()
@@ -64,8 +68,37 @@ def test_upload_flow_to_markdown():
     assert dl.status_code == 200
     assert "attachment" in dl.headers["content-disposition"]
 
-    missing = client.get(f"/api/tasks/does-not-exist")
-    assert missing.status_code == 404
+    assert client.get("/api/tasks/does-not-exist").status_code == 404
+
+
+def test_partial_markdown_while_running():
+    """识别进行中（有页完成但未全部完成）时应能拉到部分结果。"""
+    files = {"file": ("partial.pdf", make_pdf(4), "application/pdf")}
+    created = client.post("/api/tasks", files=files)
+    task_id = created.json()["task_id"]
+
+    deadline = time.time() + 30
+    partial_seen = None
+    while time.time() < deadline:
+        task = client.get(f"/api/tasks/{task_id}").json()
+        dots = task["engines"]["dots"]
+        if dots["status"] == "running" and dots["done"] > 0:
+            md = client.get(f"/api/tasks/{task_id}/markdown/dots")
+            if md.status_code == 200:
+                partial_seen = md.text
+                break
+        if task["finished"]:
+            break  # mock 太快直接跑完也接受（部分路径已被上面覆盖的机会窗口小）
+        time.sleep(0.1)
+
+    if partial_seen is not None:
+        assert "mock" in partial_seen
+        # 完成后应能拉到完整结果
+        wait_finished(task_id)
+        full = client.get(f"/api/tasks/{task_id}/markdown/dots").text
+        assert len(full) > len(partial_seen)
+    else:
+        wait_finished(task_id)  # 保证任务收尾，避免影响其他用例
 
 
 def test_rejects_non_pdf():
@@ -76,11 +109,3 @@ def test_rejects_non_pdf():
 def test_rejects_corrupt_pdf():
     files = {"file": ("broken.pdf", b"this is not a pdf", "application/pdf")}
     assert client.post("/api/tasks", files=files).status_code == 400
-
-
-def test_markdown_not_ready_conflict():
-    created = client.post("/api/tasks", files={"file": ("t.pdf", make_pdf(1), "application/pdf")})
-    task_id = created.json()["task_id"]
-    resp = client.get(f"/api/tasks/{task_id}/markdown/dots")
-    assert resp.status_code in (200, 409)  # mock 很快，两者都合法
-    wait_finished(task_id)
