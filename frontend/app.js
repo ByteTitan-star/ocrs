@@ -1,12 +1,14 @@
-/* OCR 对比台前端逻辑：上传 → 轮询 → 双栏对比 / Diff */
+/* OCR 对比台前端逻辑：上传 → 轮询 → 双栏对比 / Diff（支持识别中实时预览） */
 "use strict";
 
 const $ = (sel) => document.querySelector(sel);
 const state = {
   engines: [],          // [{name,label,available,detail,mock}]
   task: null,           // 最近一次任务状态
-  markdowns: {},        // engine -> 原始 markdown 文本
-  fetched: {},          // engine -> bool
+  markdowns: {},        // engine -> 原始 markdown 文本（可为部分结果）
+  fetchedFinal: {},     // engine -> bool（最终结果已拉取）
+  lastLen: {},          // engine -> 上次拉取的字符数（部分结果去重）
+  lastPartialAt: {},    // engine -> 上次拉取部分结果的时间戳（限频）
   view: "preview",      // preview | source | diff
   pollTimer: null,
   file: null,
@@ -100,7 +102,9 @@ function resetAll() {
   if (state.pollTimer) clearTimeout(state.pollTimer);
   state.task = null;
   state.markdowns = {};
-  state.fetched = {};
+  state.fetchedFinal = {};
+  state.lastLen = {};
+  state.lastPartialAt = {};
   state.file = null;
   $("#fileInput").value = "";
   $("#fileRow").classList.add("hidden");
@@ -144,10 +148,19 @@ function pollTask(taskId) {
         let allDone = true;
         for (const [name, st] of Object.entries(task.engines)) {
           updateEngineProgress(name, st);
-          if (st.status === "done" && !state.fetched[name]) await fetchMarkdown(taskId, name);
+          if (st.status === "done") {
+            if (!state.fetchedFinal[name]) await fetchMarkdown(taskId, name, true);
+          } else if (st.status === "running" && st.done > 0) {
+            await fetchMarkdown(taskId, name, false); // 拉取已完成的页，实时预览
+          }
           if (!["done", "error"].includes(st.status)) allDone = false;
         }
-        if (allDone) { renderResults(); return; }
+        const hasContent = Object.keys(state.markdowns).length > 0;
+        if (hasContent) renderResults();
+        if (allDone) {
+          renderResults();
+          return;
+        }
       }
     } catch { /* 网络抖动时继续轮询 */ }
     pollTask(taskId);
@@ -160,28 +173,45 @@ function updateEngineProgress(name, st) {
   if (!stateEl) return;
   stateEl.textContent = STATE_TEXT[st.status] || st.status;
   stateEl.className = `ep-state ${st.status}`;
-  const pct = st.total ? Math.round((st.done / st.total) * 100) : (st.status === "done" ? 100 : 6);
-  bar.style.width = `${pct}%`;
-  note.textContent = st.note || "";
-  if (st.status === "loading") bar.style.width = "8%";
+  const determinate = st.status === "done" || (st.status === "running" && st.total > 0 && st.done > 0);
+  bar.classList.toggle("indeterminate", !determinate && ["loading", "running"].includes(st.status));
+  if (determinate) {
+    const pct = st.total ? Math.round((st.done / st.total) * 100) : 100;
+    bar.style.width = `${pct}%`;
+  } else {
+    bar.style.width = st.status === "loading" ? "8%" : "0";
+  }
+  const elapsed = st.elapsed_ms ? ` · 已用时 ${(st.elapsed_ms / 1000).toFixed(0)}s` : "";
+  note.textContent = (st.note || "") + elapsed;
+  if (st.status === "loading") note.textContent = "加载模型中…（首次约 40-60 秒）" + elapsed;
   if (st.error) {
     errEl.textContent = st.error;
     errEl.classList.remove("hidden");
   }
 }
 
-async function fetchMarkdown(taskId, engine) {
-  state.fetched[engine] = true;
+async function fetchMarkdown(taskId, engine, final) {
+  if (final) {
+    state.fetchedFinal[engine] = true;
+  } else {
+    const now = Date.now();
+    if (now - (state.lastPartialAt[engine] || 0) < 3500) return; // 部分结果限频
+    state.lastPartialAt[engine] = now;
+  }
   try {
     const res = await fetch(`/api/tasks/${taskId}/markdown/${engine}`);
-    if (res.ok) state.markdowns[engine] = await res.text();
-  } catch { /* 下次渲染时按缺失处理 */ }
+    if (!res.ok) return;
+    const text = await res.text();
+    if (text.length === (state.lastLen[engine] ?? -1)) return; // 内容没变化就不重渲染
+    state.lastLen[engine] = text.length;
+    state.markdowns[engine] = text;
+  } catch { /* 下次轮询重试 */ }
 }
 
 /* ---------- 结果渲染 ---------- */
 function renderResults() {
-  $("#progressCard").classList.add("hidden");
   $("#resultsCard").classList.remove("hidden");
+  $("#progressCard").classList.toggle("hidden", !!(state.task && state.task.finished));
   renderColumns();
   renderDownloadButtons();
   applyView();
@@ -194,31 +224,46 @@ function engineLabel(name) {
 
 function renderColumns() {
   const wrap = $("#resultColumns");
+  const engines = state.task ? state.task.engines : Object.keys(state.markdowns);
+  const hadContent = wrap.children.length > 0;
+  // 记录滚动位置：增量刷新内容时不跳动
+  const scrolls = {};
+  wrap.querySelectorAll(".col-body").forEach((el) => {
+    scrolls[el.dataset.engine] = el.scrollTop;
+  });
   wrap.innerHTML = "";
-  const engines = state.task ? Object.keys(state.task.engines) : Object.keys(state.markdowns);
   for (const name of engines) {
     const st = (state.task && state.task.engines[name]) || {};
     const md = state.markdowns[name] || "";
+    const running = st.status === "running";
     const meta = [
-      st.elapsed_ms ? `耗时 ${(st.elapsed_ms / 1000).toFixed(1)}s` : "",
-      md ? `${md.length} 字符` : "",
+      running ? `已完成 ${st.done}/${st.total} 页 · 实时预览中` : "",
+      !running && st.elapsed_ms ? `耗时 ${(st.elapsed_ms / 1000).toFixed(1)}s` : "",
+      !running && md ? `${md.length} 字符` : "",
     ].filter(Boolean).join(" · ");
     const bodyHtml = st.status === "error"
       ? `<div class="empty-hint">该引擎识别失败：<br><span style="color:var(--red)">${escapeHtml(st.error || "")}</span></div>`
       : md
         ? `<div class="pane pane-preview"><div class="md-body">${renderMarkdown(md)}</div></div>
-           <pre class="pane pane-source">${escapeHtml(md)}</pre>`
+           <pre class="pane pane-source">${escapeHtml(md)}</pre>
+           ${running ? '<div class="live-tick">▌ 识别中，下方内容持续追加…</div>' : ""}`
         : `<div class="empty-hint">暂无结果</div>`;
     wrap.insertAdjacentHTML("beforeend", `
       <div class="column">
         <div class="col-head">
-          <span class="col-name">${engineLabel(name)}</span>
+          <span class="col-name">${engineLabel(name)}${running ? ' <span class="live-dot"></span>' : ""}</span>
           <span class="col-meta"><span>${meta}</span>
             <button class="btn small" data-copy="${name}">复制源码</button></span>
         </div>
         <div class="col-body" data-engine="${name}">${bodyHtml}</div>
       </div>`);
   }
+  wrap.querySelectorAll(".col-body").forEach((el) => {
+    const prev = scrolls[el.dataset.engine];
+    // 内容增长时保持滚动位置（用户没在主动滚动的情况下贴底跟随）
+    if (prev !== undefined) el.scrollTop = prev;
+    else el.scrollTop = el.scrollHeight; // 首次渲染贴底，跟随增量
+  });
   wrap.querySelectorAll("[data-copy]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       await navigator.clipboard.writeText(state.markdowns[btn.dataset.copy] || "");
@@ -227,6 +272,7 @@ function renderColumns() {
     });
   });
   bindSyncScroll();
+  if (hadContent) applyView(); // 增量刷新后保持当前视图的显示状态
 }
 
 function renderDownloadButtons() {
@@ -234,6 +280,7 @@ function renderDownloadButtons() {
   wrap.innerHTML = "";
   if (!state.task) return;
   for (const name of Object.keys(state.markdowns)) {
+    if (!(state.task.engines[name] && state.task.engines[name].status === "done")) continue;
     const btn = document.createElement("a");
     btn.className = "btn small";
     btn.href = `/api/tasks/${state.task.id}/download/${name}`;
