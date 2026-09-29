@@ -2,12 +2,11 @@
 
 两个 mock 输出刻意有差异（错字/顺序），便于检验 Diff 视图效果。
 """
-import io
 import time
 from pathlib import Path
 
-from ..pdf_utils import PAGE_SEPARATOR, count_pages
-from .base import OcrEngine, ProgressFn
+from ..pdf_utils import count_pages
+from .base import OcrEngine, ProgressFn, append_page_markdown
 
 
 def _write_demo_image(work_dir: Path) -> str:
@@ -39,7 +38,7 @@ class MockDotsEngine(OcrEngine):
         parts = []
         for i in range(total):
             time.sleep(0.4)
-            parts.append(
+            page_md = (
                 f"# dots.ocr 识别结果 · 第 {i + 1} 页\n\n"
                 f"这是 **mock 模式**下的 dots.ocr 输出，用于演示对比界面。\n\n"
                 f"- 引擎：dots.ocr（假数据）\n"
@@ -47,8 +46,10 @@ class MockDotsEngine(OcrEngine):
                 f"| 字段 | 值 |\n| --- | --- |\n| 引擎 | dots.ocr |\n| 模式 | mock |\n\n"
                 f"示例图片：![]({rel_img})\n"
             )
+            parts.append(page_md)
+            append_page_markdown(work_dir, page_md, i)
             progress(i + 1, total, f"第 {i + 1}/{total} 页完成")
-        return PAGE_SEPARATOR.join(parts)
+        return "\n\n---\n\n".join(parts)
 
 
 class MockPaddleEngine(OcrEngine):
@@ -67,7 +68,7 @@ class MockPaddleEngine(OcrEngine):
         parts = []
         for i in range(total):
             time.sleep(0.3)
-            parts.append(
+            page_md = (
                 f"# PaddleOCR 识别结果 · 第 {i + 1} 页\n\n"
                 f"这是 **mock 模式**下的 PaddleOCR 输出。\n\n"
                 f"- 引擎：PaddleOCR PP-StructureV3（假数据）\n"
@@ -75,5 +76,7 @@ class MockPaddleEngine(OcrEngine):
                 f"| 字段 | 值 |\n| --- | --- |\n| 引擎 | PaddleOCR |\n| 模式 | mock |\n\n"
                 f"示例图片：<img src=\"{rel_img}\" />\n"
             )
+            parts.append(page_md)
+            append_page_markdown(work_dir, page_md, i)
             progress(i + 1, total, f"第 {i + 1}/{total} 页完成")
-        return PAGE_SEPARATOR.join(parts)
+        return "\n\n---\n\n".join(parts)

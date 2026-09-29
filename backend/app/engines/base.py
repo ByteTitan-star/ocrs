@@ -8,6 +8,18 @@ from typing import Callable, Optional
 # 进度回调：(已完成页数, 总页数, 说明)
 ProgressFn = Callable[[int, int, str], None]
 
+# 页与页之间的分隔线（与最终 Markdown 拼接格式一致）
+PAGE_SEPARATOR = "\n\n---\n\n"
+
+
+def append_page_markdown(work_dir: Path, page_md: str, page_index: int) -> None:
+    """把一页的 Markdown 增量写入 work_dir/result.md，识别完一页即可被前端拉取预览。"""
+    if not page_md:
+        return
+    content = page_md if page_index == 0 else PAGE_SEPARATOR + page_md
+    with open(work_dir / "result.md", "a", encoding="utf-8") as f:
+        f.write(content)
+
 
 class OcrEngine(ABC):
     """单个 OCR 引擎。实现者只需提供 _load / _run；线程安全由 TaskStore 的引擎级锁保证。"""
@@ -44,8 +56,10 @@ class OcrEngine(ABC):
 
     def run(self, pdf_path: Path, work_dir: Path, progress: Optional[ProgressFn] = None) -> str:
         noop: ProgressFn = lambda *_: None
+        progress = progress or noop
         self.load()
-        return self._run(pdf_path, work_dir, progress or noop)
+        progress(0, 0, "模型加载完成，开始识别…")  # 首页可能耗时数分钟，先让状态进入"识别中"
+        return self._run(pdf_path, work_dir, progress)
 
 
 def format_exception(exc: BaseException) -> str:
