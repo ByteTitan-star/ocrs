@@ -59,6 +59,43 @@ uv run uvicorn app.main:app --port 8000
 
 > **huggingface.co 无法访问？** 下载脚本会自动探测并切换到 `hf-mirror.com` 镜像，也可 `export HF_ENDPOINT=...` 自行指定。
 
+## 模型下载（fork 后从这里开始）
+
+本项目涉及的全部模型/权重只有三处，均无需手动找链接，按表格执行即可：
+
+| # | 组件 | 体积 | 你需要做什么 |
+| --- | --- | --- | --- |
+| 1 | **dots.ocr 模型权重**（`dots-studio/dots.ocr`，约 3B 参数，含视觉编码器） | **6.08 GB** | 执行一键脚本（见下），下载到 `weights/DotsOCR`，支持断点续传 |
+| 2 | **dots_ocr 推理代码**（prompt / 后处理 / JSON→Markdown 工具链） | 约 1 MB | 无需手动操作，`scripts/setup.sh --dots` 自动 `git clone` 到 `vendor/dots.ocr` 并安装 |
+| 3 | **PaddleOCR PP-StructureV3 子模型**（14 个，含版面/检测/识别/表格/公式，合计约 1.7 GB） | 1.7 GB | 无需手动操作，首次识别自动下载缓存到 `~/.paddlex/official_models`（国内自动切百度 BOS 源） |
+
+**一键下载命令（组件 1）**：
+
+```bash
+cd backend
+uv run python ../scripts/download_dots_weights.py              # 自动测速选择 HuggingFace / hf-mirror / ModelScope 最快源
+uv run python ../scripts/download_dots_weights.py --source modelscope   # 也可强制指定源
+```
+
+组件 1 的**官方发布页**（如需手动浏览器下载，下载全部 20 个文件放入 `weights/DotsOCR/`，注意目录名不能带点）：
+
+| 渠道 | 直链 | 说明 |
+| --- | --- | --- |
+| HuggingFace 官方 | <https://huggingface.co/dots-studio/dots.ocr> | 原 `rednote-hilab/dots.ocr`，组织已更名 `dots-studio` |
+| 国内镜像 hf-mirror | <https://hf-mirror.com/dots-studio/dots.ocr> | HuggingFace 全量镜像，无需科学上网 |
+| ModelScope 魔搭 | <https://modelscope.cn/models/dots-studio/dots.ocr> | 国内 CDN，实测约 3.4 MB/s |
+| 代码仓库（组件 2） | <https://github.com/rednote-hilab/dots.ocr> | master 分支，setup.sh 自动克隆 |
+
+> 只想用 PaddleOCR 引擎？组件 1、2 都可以跳过：`scripts/setup.sh --paddle` 后直接启动即可（`OCRS_ENGINES=paddle`）。
+
+**fork 后完整跑通的三条命令**：
+
+```bash
+scripts/setup.sh --all                                            # 依赖 + dots_ocr 代码
+cd backend && uv run python ../scripts/download_dots_weights.py   # dots.ocr 权重（6GB，断点续传）
+uv run uvicorn app.main:app --port 8000                           # 启动，Paddle 子模型首跑自动下载
+```
+
 ## 配置
 
 所有配置通过环境变量（或项目根目录 `.env` 文件，见 `.env.example`）：
@@ -67,6 +104,7 @@ uv run uvicorn app.main:app --port 8000
 | --- | --- | --- |
 | `OCRS_ENGINES` | `dots,paddle` | 启用的引擎，逗号分隔 |
 | `OCRS_MOCK` | `0` | `1` = mock 模式（假结果，联调用） |
+| `OCRS_PARALLEL` | `auto` | 引擎执行方式：按当前可用内存自动判定（双引擎工作集约 9GB+6GB+3GB 余量装得下就并行、装不下就串行）；`1` 强制并行；`0` 强制串行 |
 | `OCRS_DATA_DIR` | `./data` | 任务与结果存放目录 |
 | `OCRS_MAX_PAGES` | `100` | 单个 PDF 页数上限 |
 | `OCRS_MAX_UPLOAD_MB` | `200` | 上传大小上限 |
@@ -76,7 +114,8 @@ uv run uvicorn app.main:app --port 8000
 | `OCRS_DOTS_ATTN` | `auto` | 注意力实现；auto→`sdpa`，报错可试 `eager` |
 | `OCRS_DOTS_MAX_NEW_TOKENS` | `16384` | 单页最大生成长度；内存紧张可调小 |
 | `OCRS_DOTS_DPI` / `OCRS_DOTS_MAX_PIXELS` | `200` / 不限 | PDF 渲染 DPI 与输入像素上限（省内存） |
-| `OCRS_PADDLE_DEVICE` | 空 | 空=自动；Linux GPU 可设 `gpu:0`（Mac 仅 cpu） |
+| `OCRS_PADDLE_DEVICE` | 空 | 空=自动探测（有 CUDA 用 `gpu:0`，否则 `cpu`；Mac 必然 cpu） |
+| `OCRS_PADDLE_PROFILE` | `accurate` | PaddleOCR 精度/速度三档：`accurate` 官方默认全开；`balanced` 关方向分类/矫正/文本行方向（保留公式，推荐清晰电子 PDF）；`fast` 用 mobile 检测识别并关闭公式识别（CPU 数秒/页） |
 | `OCRS_PADDLE_FAST` | `0` | `1` 关闭文档方向分类/矫正/文本行方向，提速 |
 
 ## API
@@ -118,6 +157,7 @@ uv run pytest          # mock 模式端到端（无需模型）
 
 - **dots.ocr 引擎报「未找到模型权重」**：先运行 `scripts/download_dots_weights.py`。
 - **MPS 内存不足（16GB 机型同时跑两个引擎紧张）**：可先只启用一个引擎（`OCRS_ENGINES=dots`），或调小 `OCRS_DOTS_MAX_PIXELS`（如 `10035200`）与 `OCRS_DOTS_MAX_NEW_TOKENS`（如 `8192`），或 `OCRS_DOTS_DEVICE=cpu`。
+- **Mac 实测参考（M5 / 16GB）**：dots.ocr 约 50–110 秒/页（MPS bf16，视觉塔已打 SDPA 补丁避免 OOM）；PaddleOCR 约 1–3 秒/页（CPU）；两引擎并行约需 7GB + 2GB 内存，16GB 机型可同时跑。GPU 服务器上 dots.ocr 会快一个数量级。
 - **dots.ocr 加载报注意力实现错误**：`OCRS_DOTS_ATTN=eager` 兜底（引擎已内置自动降级，一般无需手动设置）。
 - **重新执行过 `uv sync` 后 dots 引擎报 `No module named dots_ocr`**：`uv sync` 会移除手动安装的 vendored 包，重跑 `scripts/setup.sh --dots` 或 `cd backend && uv pip install --no-deps -e ../vendor/dots.ocr`。
 - **PaddleOCR 首次识别很慢**：在自动下载子模型（几百 MB）。国内网络下 huggingface.co 不可达时，本项目会在启动时自动把 PaddleX 模型源切到百度 BOS（`PADDLE_PDX_MODEL_SOURCE=bos`）；也可手动 export 该变量或 `HF_ENDPOINT=https://hf-mirror.com`。连接检测慢可设 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True`。
