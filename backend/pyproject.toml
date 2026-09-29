@@ -1,0 +1,40 @@
+[project]
+name = "ocrs"
+version = "0.1.0"
+description = "PDF 双 OCR 引擎（dots.ocr / PaddleOCR）提取 Markdown 对比平台"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "pymupdf>=1.24",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+# dots.ocr 引擎：transformers 推理（vendored dots_ocr 包由 scripts/setup.sh 以 --no-deps 安装）
+dots = [
+    "torch>=2.4",
+    "transformers==4.56.1",
+    "accelerate>=1.0",
+    "qwen-vl-utils>=0.0.8",
+    "pillow>=10.0",
+    "numpy",
+    "requests",
+    "openai>=1.30",  # dots_ocr 包顶层 __init__ 导入（其 vLLM 客户端用）
+]
+# PaddleOCR 引擎：PP-StructureV3 版面恢复
+paddle = [
+    "paddlepaddle>=3.0",
+    "paddleocr>=3.1",
+    "paddlex[ocr]>=3.0",  # PP-StructureV3 所需附加依赖组（版面/表格/公式识别）
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

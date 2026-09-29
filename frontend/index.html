@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OCR 对比台 · dots.ocr × PaddleOCR</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="logo">⇄</span>
+      <span class="title">OCR 对比台</span>
+      <span class="sub">dots.ocr × PaddleOCR · PDF → Markdown</span>
+    </div>
+    <div class="engine-badges" id="engineBadges"></div>
+  </header>
+
+  <main>
+    <!-- 上传 -->
+    <section class="card" id="uploadCard">
+      <div class="dropzone" id="dropzone">
+        <div class="dz-icon">📄</div>
+        <div class="dz-main">拖拽 PDF 到这里，或点击选择文件</div>
+        <div class="dz-sub" id="dzHint">两个引擎将并行识别，完成后并排展示 Markdown</div>
+        <input type="file" id="fileInput" accept="application/pdf,.pdf" hidden>
+      </div>
+      <div class="file-row hidden" id="fileRow">
+        <span id="fileName"></span>
+        <button class="btn primary" id="startBtn">开始对比</button>
+      </div>
+    </section>
+
+    <!-- 进度 -->
+    <section class="card hidden" id="progressCard">
+      <div class="task-head">
+        <div>
+          <div class="task-title" id="taskTitle"></div>
+          <div class="task-sub" id="taskSub"></div>
+        </div>
+        <button class="btn" id="resetBtn">重新上传</button>
+      </div>
+      <div class="progress-grid" id="progressGrid"></div>
+    </section>
+
+    <!-- 结果 -->
+    <section class="hidden" id="resultsCard">
+      <div class="toolbar">
+        <div class="tabs" id="viewTabs">
+          <button data-view="preview" class="tab active">双栏预览</button>
+          <button data-view="source" class="tab">双栏源码</button>
+          <button data-view="diff" class="tab">差异对比</button>
+        </div>
+        <div class="toolbar-right">
+          <label class="sync-toggle"><input type="checkbox" id="syncScroll" checked> 同步滚动</label>
+          <span id="downloadButtons"></span>
+        </div>
+      </div>
+      <div class="columns" id="resultColumns"></div>
+      <div class="diff-wrap hidden" id="diffWrap">
+        <div class="diff-head">
+          <span id="diffLegend"></span>
+          <span id="diffStat"></span>
+        </div>
+        <div class="diff-scroll" id="diffScroll"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>所有处理均在本机完成，PDF 不会上传到任何外部服务</footer>
+
+  <script src="vendor/marked.min.js"></script>
+  <script src="vendor/purify.min.js"></script>
+  <script src="vendor/diff.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
