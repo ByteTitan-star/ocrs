@@ -20,7 +20,7 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 @app.get("/api/engines")
 def list_engines() -> dict:
     return {"engines": engine_catalog(), "max_pages": cfg.MAX_PAGES,
-            "max_upload_mb": cfg.MAX_UPLOAD_MB}
+            "max_upload_mb": cfg.MAX_UPLOAD_MB, "parallel": cfg.PARALLEL}
 
 
 @app.post("/api/tasks")
@@ -59,28 +59,30 @@ def get_task(task_id: str) -> dict:
     task = store.get(task_id)
     if task is None:
         raise HTTPException(404, "任务不存在")
-    return task.to_dict()
+    return store.task_dict(task)
 
 
-def _require_markdown(task_id: str, engine_name: str) -> tuple[str, Path]:
+def _require_result(task_id: str, engine_name: str, allow_partial: bool) -> tuple[str, Path, bool]:
     task = store.get(task_id)
     if task is None:
         raise HTTPException(404, "任务不存在")
-    state = task.engines.get(engine_name)
+    state = store.engine_states(task).get(engine_name)
     if state is None:
         raise HTTPException(404, f"任务中没有引擎 {engine_name}")
-    if state.status != "done" or not state.md_path:
-        raise HTTPException(409, f"该引擎尚未完成（当前状态：{state.status}）")
+    md_path = (cfg.TASKS_DIR / task_id / engine_name / "result.md").resolve()
     task_dir = (cfg.TASKS_DIR / task_id).resolve()
-    md_path = Path(state.md_path).resolve()
     if not str(md_path).startswith(str(task_dir)):  # 防路径穿越
         raise HTTPException(400, "非法路径")
-    return task_id, md_path
+    if state["status"] == "done":
+        return task_id, md_path, False
+    if allow_partial and state["status"] == "running" and md_path.is_file():
+        return task_id, md_path, True
+    raise HTTPException(409, f"该引擎尚未产出结果（当前状态：{state['status']}）")
 
 
 @app.get("/api/tasks/{task_id}/markdown/{engine_name}")
 def get_markdown(task_id: str, engine_name: str) -> PlainTextResponse:
-    _, md_path = _require_markdown(task_id, engine_name)
+    _, md_path, _ = _require_result(task_id, engine_name, allow_partial=True)
     markdown = md_path.read_text(encoding="utf-8")
     markdown = rewrite_relative_images(markdown, f"/files/{task_id}/{engine_name}")
     return PlainTextResponse(markdown, media_type="text/markdown; charset=utf-8")
@@ -88,7 +90,7 @@ def get_markdown(task_id: str, engine_name: str) -> PlainTextResponse:
 
 @app.get("/api/tasks/{task_id}/download/{engine_name}")
 def download_markdown(task_id: str, engine_name: str) -> FileResponse:
-    _, md_path = _require_markdown(task_id, engine_name)
+    task_id, md_path, _ = _require_result(task_id, engine_name, allow_partial=False)
     stem = Path(store.get(task_id).filename).stem
     return FileResponse(md_path, media_type="text/markdown",
                         filename=f"{stem}_{engine_name}.md")

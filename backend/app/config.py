@@ -38,6 +38,12 @@ DATA_DIR = Path(os.getenv("OCRS_DATA_DIR", str(PROJECT_ROOT / "data"))).resolve(
 TASKS_DIR = DATA_DIR / "tasks"
 ENGINES = [s.strip() for s in os.getenv("OCRS_ENGINES", "dots,paddle").split(",") if s.strip()]
 MOCK = _bool("OCRS_MOCK", False)
+# 引擎执行方式：auto（默认，按当前可用内存自动判定串行/并行）/ 1 强制并行 / 0 强制串行
+PARALLEL = os.getenv("OCRS_PARALLEL", "auto").strip().lower()
+if PARALLEL in ("true", "yes", "on"):
+    PARALLEL = "1"
+elif PARALLEL in ("false", "no", "off"):
+    PARALLEL = "0"
 MAX_PAGES = _int("OCRS_MAX_PAGES", 100)
 MAX_UPLOAD_MB = _int("OCRS_MAX_UPLOAD_MB", 200)
 
@@ -52,7 +58,11 @@ DOTS_MAX_PIXELS = _int("OCRS_DOTS_MAX_PIXELS", 0)
 DOTS_PROMPT_MODE = os.getenv("OCRS_DOTS_PROMPT_MODE", "prompt_layout_all_en")
 
 # ===== PaddleOCR =====
+# 设备：留空自动探测（有 CUDA 用 gpu:0，否则 cpu；Mac 上必然 cpu）；也可手动指定如 gpu:0
 PADDLE_DEVICE = os.getenv("OCRS_PADDLE_DEVICE", "").strip()
+# 精度/速度三档：accurate（官方默认全开）| balanced（关方向/矫正/文本行方向，保留公式）| fast（mobile 检测识别+关公式，CPU 数秒/页）
+PADDLE_PROFILE = os.getenv("OCRS_PADDLE_PROFILE", "accurate").strip().lower()
+# 旧提速开关（等价 balanced 的三个关闭），保留兼容；建议改用 OCRS_PADDLE_PROFILE
 PADDLE_FAST = _bool("OCRS_PADDLE_FAST", False)
 
 # PaddleX 3.4 默认从 huggingface 下载子模型，国内网络会卡死；
