@@ -15,6 +15,7 @@ dependencies = [
 # dots.ocr 引擎：transformers 推理（vendored dots_ocr 包由 scripts/setup.sh 以 --no-deps 安装）
 dots = [
     "torch>=2.4",
+    "torchvision",  # qwen_vl_utils 顶层导入需要
     "transformers==4.56.1",
     "accelerate>=1.0",
     "qwen-vl-utils>=0.0.8",
