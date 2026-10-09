@@ -1,5 +1,7 @@
 """分片协议测试：worker spec 解析、paddle page_indexes 透传、mock 引擎分片行为、
 result.md 分片起点不带多余分隔线。"""
+import sys
+
 import fitz
 
 from app.engines.mock import MockDotsEngine
@@ -102,3 +104,24 @@ def test_pipeline_kwargs_formula_override(monkeypatch):
     monkeypatch.setattr(cfg, "PADDLE_PROFILE", "fast")
     monkeypatch.setattr(cfg, "PADDLE_FORMULA", "1")
     assert engine._pipeline_kwargs()["use_formula_recognition"] is True  # 显式开可覆盖 fast
+
+
+def test_formula_platform_default(monkeypatch):
+    """公式识别平台默认：macOS 关，其他平台跟随 profile（开）。"""
+    from app import config as cfg
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert cfg._formula_platform_default() == "0"
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cfg._formula_platform_default() == ""
+
+
+def test_formula_mac_default_takes_effect(monkeypatch):
+    """未显式设置时按平台默认落到引擎参数：Mac 上 balanced 也应关公式。"""
+    from app import config as cfg
+    monkeypatch.setattr(cfg, "PADDLE_PROFILE", "balanced")
+    monkeypatch.setattr(cfg, "PADDLE_FORMULA", cfg._formula_platform_default())
+    kw = PaddleEngine()._pipeline_kwargs()
+    if sys.platform == "darwin":
+        assert kw["use_formula_recognition"] is False
+    else:
+        assert "use_formula_recognition" not in kw

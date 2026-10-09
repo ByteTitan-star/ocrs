@@ -63,9 +63,21 @@ DOTS_PROMPT_MODE = os.getenv("OCRS_DOTS_PROMPT_MODE", "prompt_layout_all_en")
 PADDLE_DEVICE = os.getenv("OCRS_PADDLE_DEVICE", "").strip()
 # 精度/速度三档：accurate（官方默认全开）| balanced（关方向/矫正/文本行方向，保留公式）| fast（mobile 检测识别+关公式，CPU 数秒/页）
 PADDLE_PROFILE = os.getenv("OCRS_PADDLE_PROFILE", "accurate").strip().lower()
+
+
+def _formula_platform_default() -> str:
+    """公式识别的平台默认：macOS 的 paddlepaddle 轮子无 MKLDNN/GPU，
+    FormulaNet-L 自回归解码在单线程 CPU 上极慢（M5 实测 63s/页 → 15min+/页），
+    Mac 上默认关闭；其他平台默认跟随 profile（accurate/balanced 开）。"""
+    return "0" if sys.platform == "darwin" else ""
+
+
 # 公式识别开关：留空跟随 profile（accurate/balanced 开、fast 关）；0 强制关闭；1 强制开启。
-# M5 CPU 实测：FormulaNet-L 自回归解码占单页耗时 90% 以上（63s/页 → 15min+/页），纯 CPU 建议关闭。
-PADDLE_FORMULA = os.getenv("OCRS_PADDLE_FORMULA", "").strip()
+# 未显式设置时取平台默认（Mac=0）；显式设置永远优先。
+if "OCRS_PADDLE_FORMULA" in os.environ:
+    PADDLE_FORMULA = os.environ["OCRS_PADDLE_FORMULA"].strip()
+else:
+    PADDLE_FORMULA = _formula_platform_default()
 # 旧提速开关（等价 balanced 的三个关闭），保留兼容；建议改用 OCRS_PADDLE_PROFILE
 PADDLE_FAST = _bool("OCRS_PADDLE_FAST", False)
 

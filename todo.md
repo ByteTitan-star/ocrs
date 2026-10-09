@@ -86,6 +86,12 @@
 - [x] README「跨平台运行」：平台×GPU 矩阵、Windows GPU 安装步骤、doctor 用法
 - 验证：`pytest` ✅ 39 passed（警告规则/报告结构/CLI）；本机 doctor 实跑输出正确（torch mps / paddle cpu / 三引擎 OK）
 
+## P12 公式识别平台默认：macOS 自动关闭
+
+- [x] `config.py`：`OCRS_PADDLE_FORMULA` 未显式设置时取平台默认——darwin=0（关），其他平台=空（跟随 profile 开）；显式设置永远优先
+- [x] paddle 引擎 availability 详情显示公式开关状态（/api/engines 徽章可见「公式开/关」）
+- 验证：`pytest` ✅ 41 passed（平台默认函数、Mac 默认落到引擎参数）；本机实测无环境变量时 `PADDLE_FORMULA='0'`、`use_formula_recognition=False`、徽章显示「公式关」
+
 ## 明确不做（YAGNI，留待生产环境）
 
 - Redis/Kafka 队列接入：文件 job 协议已是可替换边界，部署时换传输层即可

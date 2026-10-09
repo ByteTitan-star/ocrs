@@ -47,7 +47,9 @@ class PaddleEngine(OcrEngine):
             ver = getattr(paddleocr, "__version__", "3.x")
         if not hasattr(paddleocr, "PPStructureV3"):
             return False, f"paddleocr {ver} 不包含 PPStructureV3，需要 3.x"
-        return True, f"paddleocr {ver} · profile={cfg.PADDLE_PROFILE}"
+        formula_on = self._pipeline_kwargs().get("use_formula_recognition", True)
+        return True, (f"paddleocr {ver} · profile={cfg.PADDLE_PROFILE} · "
+                      f"公式{'开' if formula_on else '关'}")
 
     def _resolve_device(self) -> str:
         if cfg.PADDLE_DEVICE:

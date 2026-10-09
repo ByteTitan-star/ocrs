@@ -123,6 +123,7 @@ uv run uvicorn app.main:app --port 8000                           # 启动，Pad
 | `OCRS_DOTS_DPI` / `OCRS_DOTS_MAX_PIXELS` | `200` / 不限 | PDF 渲染 DPI 与输入像素上限（省内存） |
 | `OCRS_PADDLE_DEVICE` | 空 | 空=自动探测（有 CUDA 用 `gpu:0`，否则 `cpu`；Mac 必然 cpu） |
 | `OCRS_PADDLE_PROFILE` | `accurate` | PaddleOCR 精度/速度三档：`accurate` 官方默认全开；`balanced` 关方向分类/矫正/文本行方向（保留公式，推荐清晰电子 PDF）；`fast` 用 mobile 检测识别并关闭公式识别（CPU 数秒/页） |
+| `OCRS_PADDLE_FORMULA` | 平台默认 | 公式识别：留空=平台默认（**macOS 自动关闭**——其 paddle 轮子无 MKLDNN/GPU，FormulaNet-L 单线程极慢；Windows/Linux 跟随 profile 默认开启）；`0` 强制关 / `1` 强制开（显式设置永远优先） |
 | `OCRS_PADDLE_FAST` | `0` | `1` 关闭文档方向分类/矫正/文本行方向，提速 |
 
 ## API
@@ -238,7 +239,7 @@ uv run pytest          # mock 模式端到端（无需模型）
 - **重新执行过 `uv sync` 后 dots 引擎报 `No module named dots_ocr`**：`uv sync` 会移除手动安装的 vendored 包，重跑 `scripts/setup.sh --dots` 或 `cd backend && uv pip install --no-deps -e ../vendor/dots.ocr`。
 - **PaddleOCR 首次识别很慢**：在自动下载子模型（几百 MB）。国内网络下 huggingface.co 不可达时，本项目会在启动时自动把 PaddleX 模型源切到百度 BOS（`PADDLE_PDX_MODEL_SOURCE=bos`）；也可手动 export 该变量或 `HF_ENDPOINT=https://hf-mirror.com`。连接检测慢可设 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True`。
 - **Linux GPU 服务器**：`uv sync --extra dots` 安装的 torch 默认含 CUDA；dots 引擎 `OCRS_DOTS_DEVICE=cuda`；Paddle 需改装 `paddlepaddle-gpu` 并设 `OCRS_PADDLE_DEVICE=gpu:0`。
-- **Mac 上 PaddleOCR 为什么慢、内存/CPU 都跑不满？** macOS ARM 版 paddlepaddle 轮子不含 oneDNN（MKLDNN），CPU 推理走单线程参考 BLAS，`cpu_threads` 参数无效；此时瓶颈是公式识别 FormulaNet-L 的自回归解码。M5 实测（学术论文首页）：balanced 带公式 **15min+/页**、balanced 关公式（`OCRS_PADDLE_FORMULA=0`）**~63s/页**、fast 档 **~23s/页**（文本输出与 server 档几乎一致，但无公式 LaTeX）。公式密集文档在 Mac 上建议用 dots.ocr（MPS 加速）；Paddle 跑公式请上 Linux GPU。
+- **Mac 上 PaddleOCR 为什么慢、内存/CPU 都跑不满？** macOS ARM 版 paddlepaddle 轮子不含 oneDNN（MKLDNN），CPU 推理走单线程参考 BLAS，`cpu_threads` 参数无效；此时瓶颈是公式识别 FormulaNet-L 的自回归解码。因此 **macOS 上公式识别默认自动关闭**（`OCRS_PADDLE_FORMULA` 平台默认，可用 `=1` 强制开启）。M5 实测（学术论文首页）：带公式 **15min+/页**、关公式 **~63s/页**、fast 档 **~23s/页**（文本输出与 server 档几乎一致，但无公式 LaTeX）。公式密集文档在 Mac 上建议用 dots.ocr（MPS 加速）；Windows/Linux GPU 上 paddle 开公式为秒级/页。
 
 ## 关于两个引擎的输出差异
 
