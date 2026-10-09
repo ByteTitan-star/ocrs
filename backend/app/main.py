@@ -24,7 +24,8 @@ def list_engines() -> dict:
 
 
 @app.post("/api/tasks")
-async def create_task(file: UploadFile) -> dict:
+async def create_task(file: UploadFile, page_start: int = 0, page_end: int | None = None) -> dict:
+    """上传 PDF 创建识别任务；page_start/page_end 指定分片页码区间（左闭右开，绝对页码）。"""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(400, "只支持 PDF 文件")
     engine_names = available_engine_names()
@@ -47,11 +48,20 @@ async def create_task(file: UploadFile) -> dict:
         raise HTTPException(400, f"无法解析该 PDF：{exc}") from exc
     if pages == 0:
         raise HTTPException(400, "该 PDF 没有任何页面")
-    if pages > cfg.MAX_PAGES:
-        raise HTTPException(400, f"页数 {pages} 超过上限 {cfg.MAX_PAGES}（可通过 OCRS_MAX_PAGES 调整）")
 
-    task = store.create(file.filename, pdf_path, pages, engine_names, task_id=task_id)
-    return {"task_id": task.id, "pages": pages, "engines": engine_names}
+    if page_start < 0 or page_start >= pages:
+        raise HTTPException(400, f"page_start={page_start} 超出范围 [0, {pages})")
+    page_end = min(page_end if page_end is not None else pages, pages)
+    if page_end <= page_start:
+        raise HTTPException(400, f"page_end={page_end} 必须大于 page_start={page_start}")
+    shard_pages = page_end - page_start
+    if shard_pages > cfg.MAX_PAGES:
+        raise HTTPException(400, f"分片页数 {shard_pages} 超过上限 {cfg.MAX_PAGES}（可通过 OCRS_MAX_PAGES 调整）")
+
+    task = store.create(file.filename, pdf_path, shard_pages, engine_names, task_id=task_id,
+                        page_start=page_start, page_end=page_end)
+    return {"task_id": task.id, "pages": shard_pages, "engines": engine_names,
+            "page_start": page_start, "page_end": page_end}
 
 
 @app.get("/api/tasks/{task_id}")

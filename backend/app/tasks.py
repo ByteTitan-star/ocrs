@@ -46,16 +46,18 @@ class TaskStore:
             return self._tasks.get(task_id)
 
     def create(self, filename: str, pdf_path: Path, pages: int, engine_names: list[str],
-               task_id: str | None = None) -> Task:
+               task_id: str | None = None,
+               page_start: int | None = None, page_end: int | None = None) -> Task:
         task_id = task_id or self.new_id()
         task = Task(id=task_id, filename=filename, pages=pages,
                     created_at=time.time(), engines=list(engine_names))
         task_dir = cfg.TASKS_DIR / task_id
+        spec = {"pdf": str(pdf_path), "pages": pages, "created": task.created_at}
+        if page_start is not None and page_end is not None:  # 分片任务：worker 只处理该页区间
+            spec.update(page_start=page_start, page_end=page_end)
         for name in engine_names:
             (task_dir / name).mkdir(parents=True, exist_ok=True)
-            job_path(task_dir, name).write_text(json.dumps({
-                "pdf": str(pdf_path), "pages": pages, "created": task.created_at,
-            }, ensure_ascii=False), encoding="utf-8")
+            job_path(task_dir, name).write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
         with self._lock:
             self._tasks[task_id] = task
         for name in engine_names:
