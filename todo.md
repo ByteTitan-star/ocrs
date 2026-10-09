@@ -92,6 +92,12 @@
 - [x] paddle 引擎 availability 详情显示公式开关状态（/api/engines 徽章可见「公式开/关」）
 - 验证：`pytest` ✅ 41 passed（平台默认函数、Mac 默认落到引擎参数）；本机实测无环境变量时 `PADDLE_FORMULA='0'`、`use_formula_recognition=False`、徽章显示「公式关」
 
+## P13 平台默认再进一档：macOS 默认 fast profile
+
+- [x] `config.py`：`OCRS_PADDLE_PROFILE` 未显式设置时取平台默认——darwin=fast（mobile 模型 ~23s/页，抗内存饥饿），其他平台=accurate；显式设置永远优先
+- [x] .env 不再固定 balanced，交由平台默认
+- 验证：`pytest` ✅ 42 passed；`/api/engines` 显示 profile=fast · 公式关（Mac 两级平台默认叠加生效）
+
 ## 明确不做（YAGNI，留待生产环境）
 
 - Redis/Kafka 队列接入：文件 job 协议已是可替换边界，部署时换传输层即可

@@ -61,8 +61,18 @@ DOTS_PROMPT_MODE = os.getenv("OCRS_DOTS_PROMPT_MODE", "prompt_layout_all_en")
 # ===== PaddleOCR =====
 # 设备：留空自动探测（有 CUDA 用 gpu:0，否则 cpu；Mac 上必然 cpu）；也可手动指定如 gpu:0
 PADDLE_DEVICE = os.getenv("OCRS_PADDLE_DEVICE", "").strip()
+def _profile_platform_default() -> str:
+    """PaddleOCR profile 的平台默认：macOS 轮子无 MKLDNN/GPU、单线程 BLAS，
+    server 模型空载也要 ~65s/页（内存吃紧时成倍劣化），开发机上默认 fast（mobile，~23s/页）；
+    其他平台（可配 GPU）默认 accurate。显式设置 OCRS_PADDLE_PROFILE 永远优先。"""
+    return "fast" if sys.platform == "darwin" else "accurate"
+
+
 # 精度/速度三档：accurate（官方默认全开）| balanced（关方向/矫正/文本行方向，保留公式）| fast（mobile 检测识别+关公式，CPU 数秒/页）
-PADDLE_PROFILE = os.getenv("OCRS_PADDLE_PROFILE", "accurate").strip().lower()
+if "OCRS_PADDLE_PROFILE" in os.environ:
+    PADDLE_PROFILE = os.getenv("OCRS_PADDLE_PROFILE", "").strip().lower()
+else:
+    PADDLE_PROFILE = _profile_platform_default()
 
 
 def _formula_platform_default() -> str:

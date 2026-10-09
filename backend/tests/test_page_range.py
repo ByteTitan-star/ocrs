@@ -125,3 +125,12 @@ def test_formula_mac_default_takes_effect(monkeypatch):
         assert kw["use_formula_recognition"] is False
     else:
         assert "use_formula_recognition" not in kw
+
+
+def test_profile_platform_default(monkeypatch):
+    """profile 平台默认：macOS 用 fast（开发机提速），其他平台 accurate。"""
+    from app import config as cfg
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert cfg._profile_platform_default() == "fast"
+    monkeypatch.setattr(sys, "platform", "win32")
+    assert cfg._profile_platform_default() == "accurate"
