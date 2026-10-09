@@ -104,6 +104,12 @@
 - [x] 前端顶栏第一个徽章显示 `macOS 25.4.0 · GPU: MPS · Apple 统一内存 · 可用内存 12GB`，悬停显示完整摘要与警告（只读展示，不影响任何逻辑）
 - 验证：`pytest` ✅ 43 passed（system 字段结构）；本机实测徽章数据显示正确
 
+## P15 dots.ocr 图片落地：base64 内联改文件引用
+
+- [x] 定位：vendor `layoutjson2md` 把 Picture 块裁剪后内联为 `![](data:image/...;base64,...)`
+- [x] `engines/dots.py` 新增 `extract_data_uri_images`：解码落盘 `images/dots_p{页码}_{序号}.png`，改写相对路径引用（与 paddle 行为对齐；result.md 瘦身、前端 /files 直出、切块不携带 base64）
+- 验证：`pytest` ✅ 45 passed（解码正确性、绝对页码命名、多图递增、纯文本不受影响）
+
 ## 明确不做（YAGNI，留待生产环境）
 
 - Redis/Kafka 队列接入：文件 job 协议已是可替换边界，部署时换传输层即可
