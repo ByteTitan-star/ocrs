@@ -62,6 +62,9 @@ DOTS_PROMPT_MODE = os.getenv("OCRS_DOTS_PROMPT_MODE", "prompt_layout_all_en")
 PADDLE_DEVICE = os.getenv("OCRS_PADDLE_DEVICE", "").strip()
 # 精度/速度三档：accurate（官方默认全开）| balanced（关方向/矫正/文本行方向，保留公式）| fast（mobile 检测识别+关公式，CPU 数秒/页）
 PADDLE_PROFILE = os.getenv("OCRS_PADDLE_PROFILE", "accurate").strip().lower()
+# 公式识别开关：留空跟随 profile（accurate/balanced 开、fast 关）；0 强制关闭；1 强制开启。
+# M5 CPU 实测：FormulaNet-L 自回归解码占单页耗时 90% 以上（63s/页 → 15min+/页），纯 CPU 建议关闭。
+PADDLE_FORMULA = os.getenv("OCRS_PADDLE_FORMULA", "").strip()
 # 旧提速开关（等价 balanced 的三个关闭），保留兼容；建议改用 OCRS_PADDLE_PROFILE
 PADDLE_FAST = _bool("OCRS_PADDLE_FAST", False)
 

@@ -85,3 +85,20 @@ def test_paddle_whole_doc_no_page_indexes(tmp_path):
     assert engine.pipeline.calls == [{}]  # 整本时不传 page_indexes
     result = (work / "result.md").read_text(encoding="utf-8")
     assert result == "第0页内容\n\n---\n\n第1页内容"
+
+
+def test_pipeline_kwargs_formula_override(monkeypatch):
+    """OCRS_PADDLE_FORMULA 显式覆盖 profile 的公式识别开关。"""
+    from app import config as cfg
+    engine = PaddleEngine()
+
+    monkeypatch.setattr(cfg, "PADDLE_PROFILE", "balanced")
+    monkeypatch.setattr(cfg, "PADDLE_FORMULA", "")
+    assert "use_formula_recognition" not in engine._pipeline_kwargs()  # 跟随管线默认
+
+    monkeypatch.setattr(cfg, "PADDLE_FORMULA", "0")
+    assert engine._pipeline_kwargs()["use_formula_recognition"] is False
+
+    monkeypatch.setattr(cfg, "PADDLE_PROFILE", "fast")
+    monkeypatch.setattr(cfg, "PADDLE_FORMULA", "1")
+    assert engine._pipeline_kwargs()["use_formula_recognition"] is True  # 显式开可覆盖 fast

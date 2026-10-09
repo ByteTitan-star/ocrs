@@ -203,6 +203,7 @@ uv run pytest          # mock 模式端到端（无需模型）
 - **重新执行过 `uv sync` 后 dots 引擎报 `No module named dots_ocr`**：`uv sync` 会移除手动安装的 vendored 包，重跑 `scripts/setup.sh --dots` 或 `cd backend && uv pip install --no-deps -e ../vendor/dots.ocr`。
 - **PaddleOCR 首次识别很慢**：在自动下载子模型（几百 MB）。国内网络下 huggingface.co 不可达时，本项目会在启动时自动把 PaddleX 模型源切到百度 BOS（`PADDLE_PDX_MODEL_SOURCE=bos`）；也可手动 export 该变量或 `HF_ENDPOINT=https://hf-mirror.com`。连接检测慢可设 `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True`。
 - **Linux GPU 服务器**：`uv sync --extra dots` 安装的 torch 默认含 CUDA；dots 引擎 `OCRS_DOTS_DEVICE=cuda`；Paddle 需改装 `paddlepaddle-gpu` 并设 `OCRS_PADDLE_DEVICE=gpu:0`。
+- **Mac 上 PaddleOCR 为什么慢、内存/CPU 都跑不满？** macOS ARM 版 paddlepaddle 轮子不含 oneDNN（MKLDNN），CPU 推理走单线程参考 BLAS，`cpu_threads` 参数无效；此时瓶颈是公式识别 FormulaNet-L 的自回归解码。M5 实测（学术论文首页）：balanced 带公式 **15min+/页**、balanced 关公式（`OCRS_PADDLE_FORMULA=0`）**~63s/页**、fast 档 **~23s/页**（文本输出与 server 档几乎一致，但无公式 LaTeX）。公式密集文档在 Mac 上建议用 dots.ocr（MPS 加速）；Paddle 跑公式请上 Linux GPU。
 
 ## 关于两个引擎的输出差异
 

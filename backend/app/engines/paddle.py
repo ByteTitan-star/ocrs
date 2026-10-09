@@ -75,6 +75,8 @@ class PaddleEngine(OcrEngine):
                 text_recognition_model_name="PP-OCRv5_mobile_rec",
                 use_formula_recognition=False,  # 跳过 698MB 的 FormulaNet-L
             )
+        if cfg.PADDLE_FORMULA in ("0", "1"):  # 显式覆盖 profile 的公式识别开关
+            kwargs["use_formula_recognition"] = cfg.PADDLE_FORMULA == "1"
         return kwargs
 
     def _load(self) -> None:
