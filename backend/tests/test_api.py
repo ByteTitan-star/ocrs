@@ -109,3 +109,14 @@ def test_rejects_non_pdf():
 def test_rejects_corrupt_pdf():
     files = {"file": ("broken.pdf", b"this is not a pdf", "application/pdf")}
     assert client.post("/api/tasks", files=files).status_code == 400
+
+
+def test_engines_include_system_info():
+    """设备徽章数据源：/api/engines 携带系统/GPU 概览。"""
+    s = client.get("/api/engines").json()["system"]
+    assert s["os"]
+    assert s["gpu"]
+    assert isinstance(s["gpu_available"], bool)
+    assert s["cores"] >= 1
+    assert isinstance(s["warnings"], list)
+    assert "可用内存" in s["summary"]

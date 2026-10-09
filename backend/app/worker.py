@@ -18,35 +18,15 @@ from pathlib import Path
 
 from . import config as cfg
 from .engines import create_engine
+from .env_check import available_memory_gb, system_summary
 
 STATE_FILENAME = "{engine}.state.json"
 JOB_FILENAME = "{engine}.job"
-# 串行调度下的执行顺序：优先级小的先跑（paddle 快且省内存，先出结果）
-ENGINE_PRIORITY = {"paddle": 0, "dots": 1}
+# 串行调度下的执行顺序：优先级小的先跑（digital 无模型最快，paddle 次之，dots 最重）
+ENGINE_PRIORITY = {"digital": 0, "paddle": 1, "dots": 2}
 # 各引擎满载工作集的粗略估计（GB），用于 auto 模式判定能否并行
-ENGINE_MEMORY_GB = {"dots": 9.0, "paddle": 6.0}
+ENGINE_MEMORY_GB = {"digital": 0.3, "dots": 9.0, "paddle": 6.0}
 SYSTEM_RESERVE_GB = 3.0  # 系统/浏览器等基础开销余量
-
-
-def available_memory_gb() -> float:
-    """当前可用内存（GB）。失败时返回 0（保守视为内存紧张）。"""
-    try:
-        if sys.platform == "darwin":
-            import re
-            import subprocess
-            out = subprocess.run(["memory_pressure"], capture_output=True, text=True,
-                                 timeout=5).stdout
-            m = re.search(r"free percentage:\s*(\d+(?:\.\d+)?)", out)
-            total_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
-            return total_gb * float(m.group(1)) / 100 if m else 0.0
-        with open("/proc/meminfo", encoding="utf-8") as f:
-            info = {}
-            for line in f:
-                key, _, value = line.partition(":")
-                info[key] = int(value.strip().split()[0])  # kB
-        return info.get("MemAvailable", 0) / 1e6
-    except Exception:
-        return 0.0
 
 
 def pending_task_memory_gb(task_dir: Path, engine: str) -> float:
@@ -166,6 +146,14 @@ def cleanup_stale_running(engine: str) -> None:
                         error="服务重启导致识别中断，请重新上传该 PDF")
 
 
+def _spec_page_range(spec: dict) -> tuple[int, int] | None:
+    """从 job spec 解析分片页码区间 [start, end)，缺省为整本。"""
+    start, end = spec.get("page_start"), spec.get("page_end")
+    if start is None or end is None:
+        return None
+    return int(start), int(end)
+
+
 def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
     pdf_path = Path(spec["pdf"])
     work_dir = task_dir / engine
@@ -173,9 +161,11 @@ def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
     result_md = work_dir / "result.md"
     result_md.unlink(missing_ok=True)  # 清掉可能的历史残留
 
+    page_range = _spec_page_range(spec)
+    total = (page_range[1] - page_range[0]) if page_range else spec.get("pages", 0)
     started = time.time()
     write_state(task_dir, engine, status="loading", owner=os.getpid(),
-                started_at=started, done=0, total=spec.get("pages", 0),
+                started_at=started, done=0, total=total,
                 note="加载模型中…", error=None)
     throttle = {"last_write": 0.0, "last_done": -1}
 
@@ -185,10 +175,13 @@ def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
         if not page_tick and now - throttle["last_write"] < 0.4:
             return  # token 级高频上报限流（每 0.4s 至多一次）
         throttle["last_done"], throttle["last_write"] = done, now
-        write_state(task_dir, engine, status="running", done=done, total=total, note=note)
+        fields = {"status": "running", "done": done, "note": note}
+        if total > 0:  # 引擎加载完成后的首报 total=0，不覆盖真实总页数
+            fields["total"] = total
+        write_state(task_dir, engine, **fields)
 
     try:
-        engine_obj.run(pdf_path, work_dir, progress)
+        engine_obj.run(pdf_path, work_dir, progress, page_range=page_range)
         md_chars = result_md.stat().st_size if result_md.is_file() else 0
         write_state(task_dir, engine, status="done", finished_at=time.time(),
                     note=f"完成，共 {md_chars} 字符", md_chars=md_chars,
@@ -217,6 +210,7 @@ def main() -> int:
         return 1
 
     print(f"[worker/{engine_name}] 就绪：{detail}", flush=True)
+    print(f"[worker/{engine_name}] {system_summary()} · {engine.device_detail()}", flush=True)
     while True:
         if os.getppid() != original_ppid:  # 主进程已退出，避免孤儿进程
             print(f"[worker/{engine_name}] 主进程已退出，worker 结束", flush=True)

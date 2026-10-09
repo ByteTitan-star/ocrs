@@ -11,14 +11,21 @@ ProgressFn = Callable[[int, int, str], None]
 # 页与页之间的分隔线（与最终 Markdown 拼接格式一致）
 PAGE_SEPARATOR = "\n\n---\n\n"
 
+# 分片页码区间 [start, end)，None 表示整本；页码为 PDF 内的绝对页码
+PageRange = Optional[tuple[int, int]]
 
-def append_page_markdown(work_dir: Path, page_md: str, page_index: int) -> None:
-    """把一页的 Markdown 增量写入 work_dir/result.md，识别完一页即可被前端拉取预览。"""
+
+def append_page_markdown(work_dir: Path, page_md: str) -> None:
+    """把一页的 Markdown 增量写入 work_dir/result.md，识别完一页即可被前端拉取预览。
+
+    以文件是否已存在决定是否加页分隔线——分片任务首页不从第 0 页开始时同样正确。
+    """
     if not page_md:
         return
-    content = page_md if page_index == 0 else PAGE_SEPARATOR + page_md
-    with open(work_dir / "result.md", "a", encoding="utf-8") as f:
-        f.write(content)
+    result = work_dir / "result.md"
+    prefix = "" if not result.exists() else PAGE_SEPARATOR
+    with open(result, "a", encoding="utf-8") as f:
+        f.write(prefix + page_md)
 
 
 class OcrEngine(ABC):
@@ -36,6 +43,10 @@ class OcrEngine(ABC):
     def availability(self) -> tuple[bool, str]:
         """检查依赖与模型是否就绪，返回 (是否可用, 说明)。"""
 
+    def device_detail(self) -> str:
+        """引擎实际将使用的设备描述（不加载权重，用于环境预检）。默认空=无设备概念。"""
+        return ""
+
     def load(self) -> None:
         """幂等加载模型（线程安全）。"""
         if self._loaded:
@@ -51,15 +62,17 @@ class OcrEngine(ABC):
         """加载模型/管线，耗时操作。失败应抛出带清晰信息的异常。"""
 
     @abstractmethod
-    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn) -> str:
-        """对整本 PDF 推理，返回整份 Markdown（页间以 --- 分隔），并通过 progress 上报进度。"""
+    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn,
+             page_range: PageRange = None) -> str:
+        """对 PDF（可按 page_range 分片）推理，逐页增量写入 result.md。"""
 
-    def run(self, pdf_path: Path, work_dir: Path, progress: Optional[ProgressFn] = None) -> str:
+    def run(self, pdf_path: Path, work_dir: Path, progress: Optional[ProgressFn] = None,
+            page_range: PageRange = None) -> str:
         noop: ProgressFn = lambda *_: None
         progress = progress or noop
         self.load()
         progress(0, 0, "模型加载完成，开始识别…")  # 首页可能耗时数分钟，先让状态进入"识别中"
-        return self._run(pdf_path, work_dir, progress)
+        return self._run(pdf_path, work_dir, progress, page_range=page_range)
 
 
 def format_exception(exc: BaseException) -> str:
