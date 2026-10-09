@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .. import config as cfg
 from ..pdf_utils import count_pages
-from .base import PAGE_SEPARATOR, OcrEngine, ProgressFn, append_page_markdown
+from .base import OcrEngine, PageRange, ProgressFn, append_page_markdown
 
 
 def _save_markdown_image(work_dir: Path, rel_path: str, image) -> None:
@@ -86,11 +86,18 @@ class PaddleEngine(OcrEngine):
         print(f"[paddle] PP-StructureV3 已加载：device={kwargs['device']} "
               f"profile={cfg.PADDLE_PROFILE}")
 
-    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn) -> str:
-        total = count_pages(pdf_path)
-        results = self.pipeline.predict(str(pdf_path))
-        parts: list[str] = []
-        for i, res in enumerate(results):
+    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn,
+             page_range: PageRange = None) -> str:
+        total_pages = count_pages(pdf_path)
+        start, end = page_range or (0, total_pages)
+        end = min(end, total_pages)
+        if page_range:
+            # paddlex 文档解析管线支持 page_indexes 只解析指定页（已核实 LayoutParsing 消费该参数）
+            results = self.pipeline.predict(str(pdf_path), page_indexes=list(range(start, end)))
+        else:
+            results = self.pipeline.predict(str(pdf_path))
+        total = end - start
+        for done, res in enumerate(results):
             started = time.time()
             md = getattr(res, "markdown", None) or {}
             text = md.get("markdown_texts")
@@ -98,7 +105,7 @@ class PaddleEngine(OcrEngine):
                 text = "\n\n".join(text)
             for rel_path, image in (md.get("markdown_images") or {}).items():
                 _save_markdown_image(work_dir, rel_path, image)
-            parts.append(text or "")
-            append_page_markdown(work_dir, text or "", i)
-            progress(i + 1, total, f"第 {i + 1}/{total} 页完成，用时 {time.time() - started:.1f}s")
-        return PAGE_SEPARATOR.join(parts)
+            append_page_markdown(work_dir, text or "")
+            page_no = start + done
+            progress(done + 1, total, f"第 {page_no + 1} 页完成，用时 {time.time() - started:.1f}s")
+        return ""

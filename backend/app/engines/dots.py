@@ -14,7 +14,8 @@ import time
 from pathlib import Path
 
 from .. import config as cfg
-from .base import OcrEngine, ProgressFn, append_page_markdown
+from ..pdf_utils import count_pages, iter_page_images
+from .base import OcrEngine, PageRange, ProgressFn, append_page_markdown
 
 PROMPT_MODE = cfg.DOTS_PROMPT_MODE
 
@@ -162,11 +163,11 @@ class DotsEngine(OcrEngine):
             _patch_vision_attention_sdpa(self.model)
         print(f"[dots] 模型已加载：device={device} dtype={dtype_name} attn={attn}")
 
-    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn) -> str:
+    def _run(self, pdf_path: Path, work_dir: Path, progress: ProgressFn,
+             page_range: PageRange = None) -> str:
         import threading
 
         import torch
-        from dots_ocr.utils.doc_utils import load_images_from_pdf
         from dots_ocr.utils.format_transformer import layoutjson2md
         from dots_ocr.utils.image_utils import fetch_image
         from dots_ocr.utils.layout_utils import post_process_output
@@ -178,10 +179,12 @@ class DotsEngine(OcrEngine):
         pages_dir = work_dir / "pages"
         pages_dir.mkdir(parents=True, exist_ok=True)
 
-        images = load_images_from_pdf(str(pdf_path), dpi=cfg.DOTS_DPI)
-        total = len(images)
-        parts: list[str] = []
-        for i, origin_image in enumerate(images):
+        total = count_pages(pdf_path)
+        start, end = page_range or (0, total)
+        end = min(end, total)
+        total = end - start
+        for offset, (page_no, origin_image) in enumerate(
+                iter_page_images(pdf_path, dpi=cfg.DOTS_DPI, page_range=(start, end))):
             started = time.time()
             image = fetch_image(origin_image, min_pixels=None, max_pixels=max_pixels)
             messages = [{
@@ -207,7 +210,7 @@ class DotsEngine(OcrEngine):
             streamer = TextIteratorStreamer(
                 self.processor.tokenizer, skip_prompt=True, skip_special_tokens=True)
 
-            def _consume_chars(streamer=streamer, page=i + 1, total_pages=total):
+            def _consume_chars(streamer=streamer, page=page_no + 1, total_pages=total):
                 emitted = 0
                 for chunk in streamer:
                     emitted += len(chunk)
@@ -233,13 +236,12 @@ class DotsEngine(OcrEngine):
                 min_pixels=None, max_pixels=max_pixels,
             )
             page_md = layoutjson2md(origin_image, cells, text_key="text") if cells else response
-            parts.append(page_md)
-            append_page_markdown(work_dir, page_md, i)
+            append_page_markdown(work_dir, page_md)
 
-            # 存档每页原始输出，便于调试与追溯
-            (pages_dir / f"page_{i + 1:04d}.json").write_text(
+            # 存档每页原始输出，便于调试与追溯（切块器以 cells JSON 为准）
+            (pages_dir / f"page_{page_no + 1:04d}.json").write_text(
                 json.dumps(cells, ensure_ascii=False, indent=1), encoding="utf-8")
-            (pages_dir / f"page_{i + 1:04d}.md").write_text(page_md, encoding="utf-8")
+            (pages_dir / f"page_{page_no + 1:04d}.md").write_text(page_md, encoding="utf-8")
 
-            progress(i + 1, total, f"第 {i + 1}/{total} 页完成，用时 {time.time() - started:.1f}s")
-        return PAGE_SEPARATOR.join(parts)
+            progress(offset + 1, total, f"第 {page_no + 1} 页完成，用时 {time.time() - started:.1f}s")
+        return ""

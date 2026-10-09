@@ -36,7 +36,7 @@ def _int(name: str, default: int) -> int:
 # ===== 通用 =====
 DATA_DIR = Path(os.getenv("OCRS_DATA_DIR", str(PROJECT_ROOT / "data"))).resolve()
 TASKS_DIR = DATA_DIR / "tasks"
-ENGINES = [s.strip() for s in os.getenv("OCRS_ENGINES", "dots,paddle").split(",") if s.strip()]
+ENGINES = [s.strip() for s in os.getenv("OCRS_ENGINES", "digital,dots,paddle").split(",") if s.strip()]
 MOCK = _bool("OCRS_MOCK", False)
 # 引擎执行方式：auto（默认，按当前可用内存自动判定串行/并行）/ 1 强制并行 / 0 强制串行
 PARALLEL = os.getenv("OCRS_PARALLEL", "auto").strip().lower()

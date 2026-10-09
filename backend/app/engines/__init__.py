@@ -1,14 +1,15 @@
 """引擎注册表：根据配置（含 mock 模式）产出可用的引擎实例。"""
 from .. import config as cfg
 from .base import OcrEngine
+from .digital import DigitalEngine
 from .dots import DotsEngine
-from .mock import MockDotsEngine, MockPaddleEngine
+from .mock import MockDigitalEngine, MockDotsEngine, MockPaddleEngine
 from .paddle import PaddleEngine
 
 if cfg.MOCK:
-    _REGISTRY = {"dots": MockDotsEngine, "paddle": MockPaddleEngine}
+    _REGISTRY = {"digital": MockDigitalEngine, "dots": MockDotsEngine, "paddle": MockPaddleEngine}
 else:
-    _REGISTRY = {"dots": DotsEngine, "paddle": PaddleEngine}
+    _REGISTRY = {"digital": DigitalEngine, "dots": DotsEngine, "paddle": PaddleEngine}
 
 
 def available_engine_names() -> list[str]:

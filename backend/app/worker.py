@@ -21,10 +21,10 @@ from .engines import create_engine
 
 STATE_FILENAME = "{engine}.state.json"
 JOB_FILENAME = "{engine}.job"
-# 串行调度下的执行顺序：优先级小的先跑（paddle 快且省内存，先出结果）
-ENGINE_PRIORITY = {"paddle": 0, "dots": 1}
+# 串行调度下的执行顺序：优先级小的先跑（digital 无模型最快，paddle 次之，dots 最重）
+ENGINE_PRIORITY = {"digital": 0, "paddle": 1, "dots": 2}
 # 各引擎满载工作集的粗略估计（GB），用于 auto 模式判定能否并行
-ENGINE_MEMORY_GB = {"dots": 9.0, "paddle": 6.0}
+ENGINE_MEMORY_GB = {"digital": 0.3, "dots": 9.0, "paddle": 6.0}
 SYSTEM_RESERVE_GB = 3.0  # 系统/浏览器等基础开销余量
 
 
@@ -166,6 +166,14 @@ def cleanup_stale_running(engine: str) -> None:
                         error="服务重启导致识别中断，请重新上传该 PDF")
 
 
+def _spec_page_range(spec: dict) -> tuple[int, int] | None:
+    """从 job spec 解析分片页码区间 [start, end)，缺省为整本。"""
+    start, end = spec.get("page_start"), spec.get("page_end")
+    if start is None or end is None:
+        return None
+    return int(start), int(end)
+
+
 def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
     pdf_path = Path(spec["pdf"])
     work_dir = task_dir / engine
@@ -173,9 +181,11 @@ def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
     result_md = work_dir / "result.md"
     result_md.unlink(missing_ok=True)  # 清掉可能的历史残留
 
+    page_range = _spec_page_range(spec)
+    total = (page_range[1] - page_range[0]) if page_range else spec.get("pages", 0)
     started = time.time()
     write_state(task_dir, engine, status="loading", owner=os.getpid(),
-                started_at=started, done=0, total=spec.get("pages", 0),
+                started_at=started, done=0, total=total,
                 note="加载模型中…", error=None)
     throttle = {"last_write": 0.0, "last_done": -1}
 
@@ -188,7 +198,7 @@ def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
         write_state(task_dir, engine, status="running", done=done, total=total, note=note)
 
     try:
-        engine_obj.run(pdf_path, work_dir, progress)
+        engine_obj.run(pdf_path, work_dir, progress, page_range=page_range)
         md_chars = result_md.stat().st_size if result_md.is_file() else 0
         write_state(task_dir, engine, status="done", finished_at=time.time(),
                     note=f"完成，共 {md_chars} 字符", md_chars=md_chars,
