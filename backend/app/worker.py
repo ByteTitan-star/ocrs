@@ -195,7 +195,10 @@ def run_job(engine_obj, task_dir: Path, engine: str, spec: dict) -> None:
         if not page_tick and now - throttle["last_write"] < 0.4:
             return  # token 级高频上报限流（每 0.4s 至多一次）
         throttle["last_done"], throttle["last_write"] = done, now
-        write_state(task_dir, engine, status="running", done=done, total=total, note=note)
+        fields = {"status": "running", "done": done, "note": note}
+        if total > 0:  # 引擎加载完成后的首报 total=0，不覆盖真实总页数
+            fields["total"] = total
+        write_state(task_dir, engine, **fields)
 
     try:
         engine_obj.run(pdf_path, work_dir, progress, page_range=page_range)

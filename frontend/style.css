@@ -160,7 +160,9 @@ main { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 24px 28
   0% { margin-left: -30%; }
   100% { margin-left: 100%; }
 }
-.ep-note { margin-top: 8px; font-size: 12.5px; color: var(--muted); min-height: 18px; }
+.ep-count { margin-top: 10px; font-size: 13px; font-variant-numeric: tabular-nums; min-height: 18px; }
+.ep-count strong { font-size: 14px; }
+.ep-note { margin-top: 6px; font-size: 12.5px; color: var(--muted); min-height: 18px; }
 
 .live-dot {
   display: inline-block;

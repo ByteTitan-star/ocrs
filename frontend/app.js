@@ -130,6 +130,7 @@ function showProgress(created) {
           <span class="ep-state pending" id="ep-state-${name}">排队中</span>
         </div>
         <div class="bar"><i id="ep-bar-${name}"></i></div>
+        <div class="ep-count" id="ep-count-${name}"></div>
         <div class="ep-note" id="ep-note-${name}"></div>
         <div class="ep-error hidden" id="ep-err-${name}"></div>
       </div>`);
@@ -167,23 +168,56 @@ function pollTask(taskId) {
   }, 1200);
 }
 
+function fmtClock(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`;
+}
+
 function updateEngineProgress(name, st) {
   const stateEl = $(`#ep-state-${name}`), bar = $(`#ep-bar-${name}`),
-        note = $(`#ep-note-${name}`), errEl = $(`#ep-err-${name}`);
+        note = $(`#ep-note-${name}`), errEl = $(`#ep-err-${name}`),
+        countEl = $(`#ep-count-${name}`);
   if (!stateEl) return;
   stateEl.textContent = STATE_TEXT[st.status] || st.status;
   stateEl.className = `ep-state ${st.status}`;
-  const determinate = st.status === "done" || (st.status === "running" && st.total > 0 && st.done > 0);
+  const total = st.total || (state.task ? state.task.pages : 0); // 模型加载阶段 total 可能未上报
+  const done = st.done || 0;
+  const elapsed = st.elapsed_ms || 0;
+
+  const determinate = st.status === "done" || (st.status === "running" && total > 0 && done > 0);
   bar.classList.toggle("indeterminate", !determinate && ["loading", "running"].includes(st.status));
   if (determinate) {
-    const pct = st.total ? Math.round((st.done / st.total) * 100) : 100;
-    bar.style.width = `${pct}%`;
+    bar.style.width = `${total ? Math.round((done / total) * 100) : 100}%`;
   } else {
     bar.style.width = st.status === "loading" ? "8%" : "0";
   }
-  const elapsed = st.elapsed_ms ? ` · 已用时 ${(st.elapsed_ms / 1000).toFixed(0)}s` : "";
-  note.textContent = (st.note || "") + elapsed;
-  if (st.status === "loading") note.textContent = "加载模型中…（首次约 40-60 秒）" + elapsed;
+
+  if (st.status === "done") {
+    countEl.innerHTML = `完成 <strong>${total}/${total}</strong> 页 · 总用时 ${fmtClock(elapsed)}`;
+  } else if (st.status === "running") {
+    const avg = done > 0 ? elapsed / done : 0;               // 毫秒/页（含模型加载，逐页自校正）
+    const remaining = done > 0 ? avg * (total - done) : 0;   // 预计剩余
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    let text = `<strong>${pct}% · 第 ${done}/${total} 页</strong> · 已用时 ${fmtClock(elapsed)}`;
+    if (done > 0) {
+      text += ` · 平均 ${(avg / 1000).toFixed(1)}s/页 · 预计剩余 ${fmtClock(remaining)}`;
+    } else {
+      text += ` · 首页完成后可估算剩余时间`;
+    }
+    countEl.innerHTML = text;
+  } else if (st.status === "loading") {
+    countEl.innerHTML = `加载模型中…（首次约 40-60 秒）${elapsed ? ` · 已用时 ${fmtClock(elapsed)}` : ""}`;
+  } else if (st.status === "pending") {
+    const siblingRunning = state.task && Object.entries(state.task.engines)
+      .some(([n, s]) => n !== name && s.status === "running");
+    countEl.textContent = siblingRunning ? "等待其他引擎完成（内存调度，自动串行）" : "等待 worker 空闲…";
+  } else {
+    countEl.textContent = "";
+  }
+
+  note.textContent = st.note || "";
   if (st.error) {
     errEl.textContent = st.error;
     errEl.classList.remove("hidden");
