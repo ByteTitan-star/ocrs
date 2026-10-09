@@ -70,6 +70,8 @@ header {
 .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: #b9c1cd; }
 .badge.ok .dot { background: var(--green); }
 .badge.bad .dot { background: var(--red); }
+.badge.sys .dot { background: var(--blue, #3b82f6); }
+.badge.sys { border-style: dashed; }
 
 main { flex: 1; width: 100%; max-width: 1280px; margin: 0 auto; padding: 24px 28px 40px; }
 

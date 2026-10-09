@@ -35,6 +35,15 @@ function renderBadges(info) {
     wrap.innerHTML = '<span class="badge bad"><span class="dot"></span>后端未连接</span>';
     return;
   }
+  if (info.system) { // 设备徽章：当前系统 + GPU 有无（只读展示，悬停看详情与警告）
+    const s = info.system;
+    const tip = s.summary + (s.warnings.length ? `\n⚠ ${s.warnings.join("\n⚠ ")}` : "");
+    const b = document.createElement("span");
+    b.className = "badge sys";
+    b.title = tip;
+    b.innerHTML = `<span class="dot"></span>${escapeHtml(s.os)} · GPU: ${escapeHtml(s.gpu)} · 可用内存 ${s.memory_free_gb}GB`;
+    wrap.appendChild(b);
+  }
   for (const e of info.engines) {
     const b = document.createElement("span");
     b.className = "badge " + (e.available ? "ok" : "bad");

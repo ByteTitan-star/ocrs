@@ -98,6 +98,12 @@
 - [x] .env 不再固定 balanced，交由平台默认
 - 验证：`pytest` ✅ 42 passed；`/api/engines` 显示 profile=fast · 公式关（Mac 两级平台默认叠加生效）
 
+## P14 前端设备徽章：系统 + GPU 状态展示
+
+- [x] `/api/engines` 新增 `system` 字段（`env_check.system_overview`，进程内缓存一次）：OS/GPU 类型与有无/可用内存/装错警告
+- [x] 前端顶栏第一个徽章显示 `macOS 25.4.0 · GPU: MPS · Apple 统一内存 · 可用内存 12GB`，悬停显示完整摘要与警告（只读展示，不影响任何逻辑）
+- 验证：`pytest` ✅ 43 passed（system 字段结构）；本机实测徽章数据显示正确
+
 ## 明确不做（YAGNI，留待生产环境）
 
 - Redis/Kafka 队列接入：文件 job 协议已是可替换边界，部署时换传输层即可

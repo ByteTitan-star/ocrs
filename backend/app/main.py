@@ -8,11 +8,21 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config as cfg
 from .engines import available_engine_names, engine_catalog
+from .env_check import system_overview
 from .pdf_utils import count_pages, rewrite_relative_images
 from .tasks import store
 
 app = FastAPI(title="ocrs", description="PDF 双 OCR 引擎 Markdown 对比")
 cfg.ensure_dirs()
+
+_system_overview: dict | None = None  # 进程内缓存：系统/GPU 信息静态，首次请求时计算
+
+
+def cached_system_overview() -> dict:
+    global _system_overview
+    if _system_overview is None:
+        _system_overview = system_overview()
+    return _system_overview
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -20,7 +30,8 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 @app.get("/api/engines")
 def list_engines() -> dict:
     return {"engines": engine_catalog(), "max_pages": cfg.MAX_PAGES,
-            "max_upload_mb": cfg.MAX_UPLOAD_MB, "parallel": cfg.PARALLEL}
+            "max_upload_mb": cfg.MAX_UPLOAD_MB, "parallel": cfg.PARALLEL,
+            "system": cached_system_overview()}
 
 
 @app.post("/api/tasks")

@@ -122,3 +122,25 @@ def engine_report(engine) -> dict:
         "device": engine.device_detail(),
         "setup_hint": engine.setup_hint,
     }
+
+
+def system_overview() -> dict:
+    """系统级概览（供前端设备徽章展示）：操作系统 / GPU 有无与类型 / 可用内存 / 装错警告。"""
+    torch_i, paddle_i = torch_info(), paddle_info()
+    if torch_i and torch_i["cuda"]:
+        gpu, has_gpu = f"CUDA · {torch_i['name']} {torch_i['vram_gb']}GB", True
+    elif torch_i and torch_i["mps"]:
+        gpu, has_gpu = "MPS · Apple 统一内存", True
+    elif paddle_i and paddle_i["cuda"]:
+        gpu, has_gpu = f"CUDA · {paddle_i['name']}", True
+    else:
+        gpu, has_gpu = "无（CPU 推理）", False
+    return {
+        "os": f"{platform.system()} {platform.release()}",
+        "cores": os.cpu_count() or 0,
+        "memory_free_gb": round(available_memory_gb(), 1),
+        "gpu": gpu,
+        "gpu_available": has_gpu,
+        "summary": system_summary(),
+        "warnings": gpu_warnings(torch_i, paddle_i),
+    }
