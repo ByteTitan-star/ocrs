@@ -162,10 +162,11 @@ python scripts/check_env.py --smoke  # 深度自检：每引擎真跑一页（�
 ```powershell
 git clone <repo> ; cd ocrs/backend
 uv venv ; .venv\Scripts\activate
-uv pip install -e ".[dots,paddle]"                # 基础依赖（与 setup.sh 等价）
-uv pip install torch --index-url https://download.pytorch.org/whl/cu121   # CUDA 版 torch（按 CUDA 版本选 cu121/cu124）
-uv pip install paddlepaddle-gpu==3.0.0            # GPU 版 paddle（版本需与本机 CUDA 匹配，见 paddle 官网)
-uv run python ..\scripts\download_dots_weights.py # dots 权重
+uv pip install -e ".[dots,paddle]"                # 基础依赖（与 setup.sh 等价；纯 CPU 也能跑）
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121   # CUDA 版 torch（按本机 CUDA 选 cu121/cu124）
+# paddlepaddle-gpu 的 Windows 轮子需从官方源安装（版本需匹配 CUDA；RTX 50 系在 Windows 支持有限，见官方文档）
+uv pip install paddlepaddle-gpu==3.0.0 --index-url https://www.paddlepaddle.org.cn/packages/stable/cu123/
+uv run python ..\scripts\download_dots_weights.py # dots 权重（约 6GB）
 uv run python ..\scripts\check_env.py             # 预检应显示 dots · device=cuda、paddle · device=gpu:0
 uv run uvicorn app.main:app --port 8000
 ```

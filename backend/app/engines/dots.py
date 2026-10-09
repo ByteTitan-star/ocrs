@@ -4,11 +4,15 @@
 1. 设备/精度/注意力实现可配置（Mac 默认 MPS + SDPA + bfloat16，官方硬编码 CUDA + flash-attention）；
 2. 视觉塔只有 flash-attn / eager 两种实现，无 flash-attn 时 eager 的 O(S²) 注意力矩阵在长序列下会
    OOM，这里用数学等价的 SDPA 版本替换 VisionAttention.forward；
-3. transformers 4.56 下 dots 自定义 DotsVLProcessor 构造会报 video_processor 类型错误，提供兜底构造。
+3. transformers 4.56 下 dots 自定义 DotsVLProcessor 构造会报 video_processor 类型错误，提供兜底构造；
+4. layoutjson2md 把图片块内联为 base64 data URI，这里解码落盘为 images/ 文件并改写为相对路径
+   （与 paddle 引擎行为对齐：result.md 体积可控、前端 /files 路由直出、切块不携带大段 base64）。
 推理流程（prompt → 布局 JSON → post_process_output → layoutjson2md）与官方一致。
 """
+import base64
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -18,6 +22,25 @@ from ..pdf_utils import count_pages, iter_page_images
 from .base import OcrEngine, PageRange, ProgressFn, append_page_markdown
 
 PROMPT_MODE = cfg.DOTS_PROMPT_MODE
+
+# ![](data:image/png;base64,....) 形式的内联图片
+_DATA_URI_IMG_RE = re.compile(
+    r"(!\[[^\]]*\]\()data:image/(png|jpe?g);base64,([A-Za-z0-9+/=]+)(\))")
+
+
+def extract_data_uri_images(work_dir: Path, page_md: str, page_no: int) -> str:
+    """把 markdown 里的 base64 内联图片解码落盘，改写为 images/ 相对路径引用。"""
+    counter = iter(range(1, 1000))
+
+    def _save(match: re.Match) -> str:
+        ext = "png" if match.group(2).lower() == "png" else "jpg"
+        rel = f"images/dots_p{page_no + 1:04d}_{next(counter):02d}.{ext}"
+        target = work_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(base64.b64decode(match.group(3)))
+        return f"{match.group(1)}{rel}{match.group(4)}"
+
+    return _DATA_URI_IMG_RE.sub(_save, page_md)
 
 
 def _patch_vision_attention_sdpa(model) -> None:
@@ -243,6 +266,7 @@ class DotsEngine(OcrEngine):
                 min_pixels=None, max_pixels=max_pixels,
             )
             page_md = layoutjson2md(origin_image, cells, text_key="text") if cells else response
+            page_md = extract_data_uri_images(work_dir, page_md, page_no)
             append_page_markdown(work_dir, page_md)
 
             # 存档每页原始输出，便于调试与追溯（切块器以 cells JSON 为准）
