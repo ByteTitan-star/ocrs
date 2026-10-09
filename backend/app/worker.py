@@ -18,6 +18,7 @@ from pathlib import Path
 
 from . import config as cfg
 from .engines import create_engine
+from .env_check import available_memory_gb, system_summary
 
 STATE_FILENAME = "{engine}.state.json"
 JOB_FILENAME = "{engine}.job"
@@ -26,27 +27,6 @@ ENGINE_PRIORITY = {"digital": 0, "paddle": 1, "dots": 2}
 # 各引擎满载工作集的粗略估计（GB），用于 auto 模式判定能否并行
 ENGINE_MEMORY_GB = {"digital": 0.3, "dots": 9.0, "paddle": 6.0}
 SYSTEM_RESERVE_GB = 3.0  # 系统/浏览器等基础开销余量
-
-
-def available_memory_gb() -> float:
-    """当前可用内存（GB）。失败时返回 0（保守视为内存紧张）。"""
-    try:
-        if sys.platform == "darwin":
-            import re
-            import subprocess
-            out = subprocess.run(["memory_pressure"], capture_output=True, text=True,
-                                 timeout=5).stdout
-            m = re.search(r"free percentage:\s*(\d+(?:\.\d+)?)", out)
-            total_gb = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
-            return total_gb * float(m.group(1)) / 100 if m else 0.0
-        with open("/proc/meminfo", encoding="utf-8") as f:
-            info = {}
-            for line in f:
-                key, _, value = line.partition(":")
-                info[key] = int(value.strip().split()[0])  # kB
-        return info.get("MemAvailable", 0) / 1e6
-    except Exception:
-        return 0.0
 
 
 def pending_task_memory_gb(task_dir: Path, engine: str) -> float:
@@ -230,6 +210,7 @@ def main() -> int:
         return 1
 
     print(f"[worker/{engine_name}] 就绪：{detail}", flush=True)
+    print(f"[worker/{engine_name}] {system_summary()} · {engine.device_detail()}", flush=True)
     while True:
         if os.getppid() != original_ppid:  # 主进程已退出，避免孤儿进程
             print(f"[worker/{engine_name}] 主进程已退出，worker 结束", flush=True)

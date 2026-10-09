@@ -136,6 +136,41 @@ uv run uvicorn app.main:app --port 8000                           # 启动，Pad
 | `GET` | `/api/engines` | 引擎可用性（顶栏徽章数据源） |
 | 静态 | `/files/...` | 任务产物（引擎提取的图片、route.json 等） |
 
+## 跨平台运行（Mac / Windows / Linux · 有无 GPU）
+
+代码不绑定任何平台：路径全部 `pathlib`、worker 用 `sys.executable` 拉起、设备自动探测（CUDA → MPS → CPU）、内存调度探测覆盖三平台（macOS `memory_pressure` / Windows `GlobalMemoryStatusEx` / Linux `/proc/meminfo`）。各组合的开箱行为：
+
+| 环境 | digital | dots.ocr | paddle |
+| --- | --- | --- | --- |
+| macOS（Apple 芯片） | ✅ | ✅ MPS + bf16（自动） | ✅ CPU（**Mac 轮子无 MKLDNN/GPU**，慢，见 FAQ） |
+| Windows / Linux + NVIDIA GPU | ✅ | ✅ CUDA（需 CUDA 版 torch） | ✅ `gpu:0`（需 `paddlepaddle-gpu`） |
+| Windows / Linux 无 GPU | ✅ | ✅ CPU（慢） | ✅ CPU |
+
+**跑之前先预检（不要等跑起来才发现装错）**：
+
+```bash
+python scripts/check_env.py          # 秒级静态检查：依赖/权重/每个引擎实际将使用的设备/装错版本警告
+python scripts/check_env.py --smoke  # 深度自检：每引擎真跑一页（加载模型，dots 较慢）
+```
+
+典型输出（Mac）：`torch 2.14.0 · CUDA构建=无 · mps`、`dots · device=mps dtype=bfloat16 attn=sdpa`、`paddle · device=cpu`。
+典型「装错」警告（Windows/Linux）：**「检测到 NVIDIA GPU，但 paddlepaddle 为 CPU 版：请改装 paddlepaddle-gpu」**、**「torch 为 CPU 构建；若本机有 NVIDIA 显卡，请安装 CUDA 版 torch」**。退出码非零可挂 CI 或部署前检查。启动后 `/api/engines` 与 worker 日志也带同样的设备信息。
+
+**Windows + NVIDIA GPU 安装**（PowerShell，用 `uv` 或 `pip` 均可）：
+
+```powershell
+git clone <repo> ; cd ocrs/backend
+uv venv ; .venv\Scripts\activate
+uv pip install -e ".[dots,paddle]"                # 基础依赖（与 setup.sh 等价）
+uv pip install torch --index-url https://download.pytorch.org/whl/cu121   # CUDA 版 torch（按 CUDA 版本选 cu121/cu124）
+uv pip install paddlepaddle-gpu==3.0.0            # GPU 版 paddle（版本需与本机 CUDA 匹配，见 paddle 官网)
+uv run python ..\scripts\download_dots_weights.py # dots 权重
+uv run python ..\scripts\check_env.py             # 预检应显示 dots · device=cuda、paddle · device=gpu:0
+uv run uvicorn app.main:app --port 8000
+```
+
+Linux GPU 服务器同理（`uv sync --extra dots` 的 torch 默认含 CUDA；Paddle 换装 `paddlepaddle-gpu` 并设 `OCRS_PADDLE_DEVICE=gpu:0`）。
+
 ## 大规模解析（生产部署）
 
 单机逐页串行跑千万页需要百年量级；生产做法是**让每页只花它需要的算力，让贵的算力永远满载**。本项目已内置可在本机验证的部分，其余为部署指引：

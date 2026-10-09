@@ -78,6 +78,14 @@
 - [x] 前端兜底：total 未上报时回退到任务页数
 - 验证：mock 服务（8001）+ 浏览器实测截图确认三卡片进度条/页码/ETA 渲染正常；全量回归 34 passed
 
+## P11 跨平台兼容：环境预检（doctor）+ Windows 支持
+
+- [x] `app/env_check.py`：三平台内存探测（macOS/Windows/Linux）、torch/paddle 设备指纹（CUDA 构建/MPS/设备名/显存）、「装错版本」静态警告（有 NVIDIA 卡但 paddle/torch 是 CPU 版等）
+- [x] 引擎新增 `device_detail()`（不加载权重）：dots/paddle/digital 报告实际将使用的设备；`/api/engines` 与 worker 启动日志均携带
+- [x] `scripts/check_env.py` doctor：静态检查秒级、`--smoke` 深度自检（真跑一页）、`--json`、退出码可挂 CI
+- [x] README「跨平台运行」：平台×GPU 矩阵、Windows GPU 安装步骤、doctor 用法
+- 验证：`pytest` ✅ 39 passed（警告规则/报告结构/CLI）；本机 doctor 实跑输出正确（torch mps / paddle cpu / 三引擎 OK）
+
 ## 明确不做（YAGNI，留待生产环境）
 
 - Redis/Kafka 队列接入：文件 job 协议已是可替换边界，部署时换传输层即可

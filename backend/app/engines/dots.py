@@ -123,6 +123,13 @@ class DotsEngine(OcrEngine):
                 processor.image_token_id = 151665
         return processor
 
+    def device_detail(self) -> str:
+        try:
+            device, dtype, attn = self._resolve_device()
+            return f"device={device} dtype={dtype} attn={attn}"
+        except Exception as exc:  # torch 未安装等
+            return f"设备探测失败：{exc}"
+
     def _load(self) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoProcessor

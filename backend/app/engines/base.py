@@ -43,6 +43,10 @@ class OcrEngine(ABC):
     def availability(self) -> tuple[bool, str]:
         """检查依赖与模型是否就绪，返回 (是否可用, 说明)。"""
 
+    def device_detail(self) -> str:
+        """引擎实际将使用的设备描述（不加载权重，用于环境预检）。默认空=无设备概念。"""
+        return ""
+
     def load(self) -> None:
         """幂等加载模型（线程安全）。"""
         if self._loaded:

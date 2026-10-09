@@ -79,6 +79,12 @@ class PaddleEngine(OcrEngine):
             kwargs["use_formula_recognition"] = cfg.PADDLE_FORMULA == "1"
         return kwargs
 
+    def device_detail(self) -> str:
+        try:
+            return f"device={self._resolve_device()}"
+        except Exception as exc:  # paddle 未安装等
+            return f"设备探测失败：{exc}"
+
     def _load(self) -> None:
         from paddleocr import PPStructureV3
 

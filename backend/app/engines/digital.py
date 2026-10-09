@@ -48,6 +48,9 @@ class DigitalEngine(OcrEngine):
     def availability(self) -> tuple[bool, str]:
         return True, "文字层直提 · 无需模型加载"
 
+    def device_detail(self) -> str:
+        return "无模型 · 任意平台"
+
     def _load(self) -> None:
         pass  # 无模型
 

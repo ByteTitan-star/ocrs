@@ -1,5 +1,6 @@
 """全局配置：所有配置项均为 OCRS_ 前缀环境变量，支持项目根目录 .env 文件。"""
 import os
+import sys
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -85,7 +86,7 @@ if "PADDLE_PDX_MODEL_SOURCE" not in os.environ and "HF_ENDPOINT" not in os.envir
 
     if not _hf_reachable():
         os.environ["PADDLE_PDX_MODEL_SOURCE"] = "bos"
-        print("[config] huggingface.co 不可达，PaddleOCR 子模型改用 BOS 源下载")
+        print("[config] huggingface.co 不可达，PaddleOCR 子模型改用 BOS 源下载", file=sys.stderr)
 
 
 def ensure_dirs() -> None:
