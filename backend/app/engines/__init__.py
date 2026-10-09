@@ -33,6 +33,9 @@ def engine_catalog() -> list[dict]:
             continue
         engine = create_engine(name)
         available, detail = engine.availability()
+        device = engine.device_detail()
+        if device:  # 预检信息：实际将使用的设备（不加载权重）
+            detail = f"{detail} · {device}"
         catalog.append({
             "name": name,
             "label": engine.label,
