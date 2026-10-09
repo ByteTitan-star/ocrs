@@ -122,7 +122,7 @@ uv run uvicorn app.main:app --port 8000                           # 启动，Pad
 | `OCRS_DOTS_MAX_NEW_TOKENS` | `16384` | 单页最大生成长度；内存紧张可调小 |
 | `OCRS_DOTS_DPI` / `OCRS_DOTS_MAX_PIXELS` | `200` / 不限 | PDF 渲染 DPI 与输入像素上限（省内存） |
 | `OCRS_PADDLE_DEVICE` | 空 | 空=自动探测（有 CUDA 用 `gpu:0`，否则 `cpu`；Mac 必然 cpu） |
-| `OCRS_PADDLE_PROFILE` | `accurate` | PaddleOCR 精度/速度三档：`accurate` 官方默认全开；`balanced` 关方向分类/矫正/文本行方向（保留公式，推荐清晰电子 PDF）；`fast` 用 mobile 检测识别并关闭公式识别（CPU 数秒/页） |
+| `OCRS_PADDLE_PROFILE` | 平台默认 | PaddleOCR 精度/速度三档：`accurate` 官方默认全开；`balanced` 关方向分类/矫正/文本行方向（保留公式，推荐清晰电子 PDF）；`fast` 用 mobile 检测识别并关闭公式识别（CPU 数秒/页）。留空=平台默认：**macOS 自动 `fast`**（无 MKLDNN 单线程 CPU，server 模型太慢）；Windows/Linux 自动 `accurate`；显式设置永远优先 |
 | `OCRS_PADDLE_FORMULA` | 平台默认 | 公式识别：留空=平台默认（**macOS 自动关闭**——其 paddle 轮子无 MKLDNN/GPU，FormulaNet-L 单线程极慢；Windows/Linux 跟随 profile 默认开启）；`0` 强制关 / `1` 强制开（显式设置永远优先） |
 | `OCRS_PADDLE_FAST` | `0` | `1` 关闭文档方向分类/矫正/文本行方向，提速 |
 
