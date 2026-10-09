@@ -361,9 +361,11 @@ function buildDiffRows(left, right) {
 }
 
 function diffEngineOrder() {
-  // 按任务里的引擎顺序固定左右栏（dots 在左、paddle 在右），与双栏视图一致
-  const order = state.task ? Object.keys(state.task.engines) : [];
-  return order.length >= 2 ? order : Object.keys(state.markdowns);
+  // diff 固定对比两个 OCR 引擎（dots 在左、paddle 在右）；digital 等其他引擎参与预览但不进 diff
+  const preferred = ["dots", "paddle"];
+  const order = state.task ? Object.keys(state.task.engines) : Object.keys(state.markdowns);
+  return [...order].sort((a, b) =>
+    (preferred.indexOf(a) + 1 || order.length) - (preferred.indexOf(b) + 1 || order.length));
 }
 
 function renderDiff() {
